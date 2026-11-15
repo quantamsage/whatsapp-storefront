@@ -2,14 +2,16 @@
 
 import Image from "next/image";
 import { CartItem } from "@/lib/types";
-import { formatKes } from "@/lib/format";
 import QuantityStepper from "@/components/QuantityStepper";
 import { useCartStore } from "@/lib/cartStore";
+import { useShop } from "@/components/ShopProvider";
 
 export default function CartItemRow({ item }: { item: CartItem }) {
   const increment = useCartStore((state) => state.increment);
   const decrement = useCartStore((state) => state.decrement);
   const removeItem = useCartStore((state) => state.removeItem);
+  const { money } = useShop();
+  const atMax = item.max_quantity != null && item.quantity >= item.max_quantity;
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-4">
@@ -33,7 +35,7 @@ export default function CartItemRow({ item }: { item: CartItem }) {
             <p className="text-xs text-slate-500">{item.variant}</p>
           )}
           <p className="text-sm text-slate-600">
-            {formatKes(item.price)} each
+            {money(item.price)} each
           </p>
         </div>
       </div>
@@ -41,10 +43,11 @@ export default function CartItemRow({ item }: { item: CartItem }) {
         <QuantityStepper
           quantity={item.quantity}
           onIncrement={() => increment(item.key)}
+          incrementDisabled={atMax}
           onDecrement={() => decrement(item.key)}
         />
         <p className="min-w-[6rem] text-right text-sm font-semibold">
-          {formatKes(item.price * item.quantity)}
+          {money(item.price * item.quantity)}
         </p>
         <button
           className="btn-danger"

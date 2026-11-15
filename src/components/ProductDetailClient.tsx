@@ -3,12 +3,20 @@
 import Image from "next/image";
 import { useState } from "react";
 import { Product, DecantSize } from "@/lib/types";
-import { formatKes } from "@/lib/format";
 import { useCartStore } from "@/lib/cartStore";
+import { stockInfo } from "@/lib/stock";
+import { useShop } from "@/components/ShopProvider";
 import QuantityStepper from "@/components/QuantityStepper";
 
 export default function ProductDetailClient({ product }: { product: Product }) {
   const addItem = useCartStore((state) => state.addItem);
+  const inCart = useCartStore((state) =>
+    state.items.filter((i) => i.product_id === product.id).reduce((n, i) => n + i.quantity, 0)
+  );
+  const shop = useShop();
+  const stock = stockInfo(product, shop.lowStockThreshold);
+  // Stock is shared by all options of a product, so count what's already in the cart.
+  const canAdd = Math.max(0, stock.maxQuantity - inCart);
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
 
@@ -24,22 +32,21 @@ export default function ProductDetailClient({ product }: { product: Product }) {
   const [activeImage, setActiveImage] = useState(allImages[0] || "");
 
   const price = selectedSize?.price ?? product.price;
-  const variantLabel = selectedSize
-    ? `${selectedSize.size_ml}ml`
-    : product.is_decant
-    ? "Decant"
-    : null;
+  const variantLabel = selectedSize ? shop.option(selectedSize.size_ml) : null;
 
   const handleAdd = () => {
-    if (!product.in_stock) return;
+    if (canAdd < 1) return;
     addItem({
       product_id: product.id,
       name: product.name,
       price,
-      quantity,
+      quantity: Math.min(quantity, canAdd),
       image_url: activeImage,
-      variant: variantLabel
+      variant: variantLabel,
+      size: selectedSize?.size_ml ?? null,
+      max_quantity: stock.maxQuantity
     });
+    setQuantity(1);
     setAdded(true);
     setTimeout(() => setAdded(false), 2500);
   };
@@ -62,9 +69,9 @@ export default function ProductDetailClient({ product }: { product: Product }) {
               No image
             </div>
           )}
-          {!product.in_stock && (
+          {!stock.available && (
             <div className="absolute inset-0 flex items-center justify-center bg-white/60">
-              <span className="badge-oos text-sm px-4 py-1.5">Out of stock</span>
+              <span className="badge-oos text-sm px-4 py-1.5">Sold out</span>
             </div>
           )}
         </div>
@@ -99,19 +106,16 @@ export default function ProductDetailClient({ product }: { product: Product }) {
       <div className="space-y-5">
         <div>
           <div className="mb-1 flex flex-wrap items-center gap-2">
-            {product.is_decant && (
-              <span className="inline-flex items-center rounded-full bg-sand px-2.5 py-0.5 text-xs font-semibold text-slate-700">
-                Decant
-              </span>
-            )}
-            {product.in_stock ? (
-              <span className="badge-in">In stock</span>
+            {!stock.available ? (
+              <span className="badge-oos">Sold out</span>
+            ) : stock.low ? (
+              <span className="badge-low">Only {stock.left} left</span>
             ) : (
-              <span className="badge-oos">Out of stock</span>
+              <span className="badge-in">In stock</span>
             )}
           </div>
           <h1 className="font-display text-3xl leading-tight">{product.name}</h1>
-          <p className="mt-1.5 text-xl font-semibold text-brand">{formatKes(price)}</p>
+          <p className="mt-1.5 text-xl font-semibold text-brand">{shop.money(price)}</p>
         </div>
 
         {product.description && (
@@ -120,12 +124,14 @@ export default function ProductDetailClient({ product }: { product: Product }) {
 
         {decantSizes.length > 0 && (
           <div className="space-y-2">
-            <label className="label" htmlFor="decant-size">Decant size</label>
-            <div className="flex flex-wrap gap-2">
+            <p className="label" id="option-label">{shop.optionLabel}</p>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-labelledby="option-label">
               {decantSizes.map((size) => (
                 <button
                   key={size.size_ml}
                   type="button"
+                  role="radio"
+                  aria-checked={selectedSize?.size_ml === size.size_ml}
                   onClick={() => setSelectedSize(size)}
                   className={`rounded-full border px-4 py-1.5 text-sm font-medium transition ${
                     selectedSize?.size_ml === size.size_ml
@@ -138,7 +144,7 @@ export default function ProductDetailClient({ product }: { product: Product }) {
                       : {}
                   }
                 >
-                  {size.size_ml}ml — {formatKes(size.price ?? 0)}
+                  {shop.option(size.size_ml)} — {shop.money(size.price ?? 0)}
                 </button>
               ))}
             </div>
@@ -148,7 +154,7 @@ export default function ProductDetailClient({ product }: { product: Product }) {
         <div className="flex flex-wrap items-center gap-3">
           <QuantityStepper
             quantity={quantity}
-            onIncrement={() => setQuantity((q) => q + 1)}
+            onIncrement={() => setQuantity((q) => Math.min(q + 1, Math.max(1, canAdd)))}
             onDecrement={() => setQuantity((q) => Math.max(1, q - 1))}
           />
           <button
@@ -156,7 +162,7 @@ export default function ProductDetailClient({ product }: { product: Product }) {
               added ? "opacity-90" : ""
             }`}
             onClick={handleAdd}
-            disabled={!product.in_stock}
+            disabled={canAdd < 1}
           >
             {added ? (
               <>
@@ -166,10 +172,15 @@ export default function ProductDetailClient({ product }: { product: Product }) {
                 Added!
               </>
             ) : (
-              product.in_stock ? "Add to cart" : "Out of stock"
+              !stock.available ? "Sold out" : canAdd < 1 ? "All in your cart" : "Add to cart"
             )}
           </button>
         </div>
+        {stock.available && stock.left !== null && inCart > 0 && (
+          <p className="text-xs text-slate-500">
+            {inCart} already in your cart · {stock.left} in stock
+          </p>
+        )}
       </div>
     </div>
   );
