@@ -3,9 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useCartStore } from "@/lib/cartStore";
-import { buildWhatsAppMessage } from "@/lib/whatsapp";
+import { buildWhatsAppMessage, whatsappLink } from "@/lib/whatsapp";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import OrderSummary from "@/components/OrderSummary";
+import { useShop } from "@/components/ShopProvider";
+
+type PlacedOrder = { id: string; total: number };
 
 const PHONE_RE = /^[0-9+\s().-]{7,16}$/;
 
@@ -18,9 +21,12 @@ export default function OrderPage() {
   const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
   const [status, setStatus] = useState<"idle" | "submitting" | "sent">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const [reference, setReference] = useState<string | null>(null);
 
-  const whatsappNumber = (process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "").replace(/\D/g, "");
-  const shouldSave = process.env.NEXT_PUBLIC_SAVE_ORDERS === "true";
+  const shop = useShop();
+  const whatsappNumber = shop.whatsappNumber;
+  const shouldSave = process.env.NEXT_PUBLIC_SAVE_ORDERS !== "false";
 
   if (items.length === 0 && status !== "sent") {
     return (
@@ -46,6 +52,7 @@ export default function OrderPage() {
           </svg>
         </div>
         <h1 className="font-display text-2xl">Order sent!</h1>
+        {reference && <p className="mt-1 text-sm font-medium text-slate-700">Order #{reference}</p>}
         <p className="mt-2 text-sm text-slate-600">WhatsApp opened in a new tab with your order summary. If it didn&apos;t open, check your popup blocker.</p>
         {saveError && <p className="mt-2 text-xs text-amber-600">{saveError}</p>}
         <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
@@ -70,27 +77,43 @@ export default function OrderPage() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setSaveError(null);
+    setOrderError(null);
     if (!validate()) return;
     if (!whatsappNumber) {
-      setErrors({ phone: "WhatsApp number is not configured yet." });
+      setOrderError("This shop hasn't set its WhatsApp number yet, so orders can't be sent.");
       return;
     }
 
+    // Open the tab now, while we still have the click, so popup blockers allow it.
+    // We point it at WhatsApp once the order is saved.
+    const tab = window.open("", "_blank");
     setStatus("submitting");
 
+    let total = subtotal;
+    let ref: string | null = null;
     if (shouldSave) {
       const supabase = supabaseBrowser();
       if (!supabase) {
-        setSaveError("Supabase env vars missing. Order not saved to database.");
+        setSaveError("The shop's database isn't connected, so this order wasn't saved. WhatsApp still has the full order.");
       } else {
-        const { error: insertError } = await supabase.from("orders").insert({
-          customer_name: form.name.trim(),
-          phone: form.phone.trim(),
-          location: form.location.trim() || "Not specified",
-          cart_items: items,
-          total: subtotal
+        // The database prices the order itself and reserves the stock, so the
+        // browser can't change prices and two people can't buy the last item.
+        const { data, error } = await supabase.rpc("place_order", {
+          p_customer_name: form.name.trim(),
+          p_phone: form.phone.trim(),
+          p_location: form.location.trim(),
+          p_items: items.map((i) => ({ product_id: i.product_id, quantity: i.quantity, size: i.size ?? null }))
         });
-        if (insertError) setSaveError("Order save failed, but WhatsApp will still open.");
+        if (error) {
+          tab?.close();
+          setStatus("idle");
+          // P0001 = a message written for shoppers in place_order (e.g. "Only 2 of X left").
+          setOrderError(error.code === "P0001" ? error.message : "We couldn't place the order. Please try again.");
+          return;
+        }
+        const placed = data as PlacedOrder;
+        total = Number(placed.total);
+        ref = placed.id.slice(0, 8).toUpperCase();
       }
     }
 
@@ -99,14 +122,14 @@ export default function OrderPage() {
       phone: form.phone.trim(),
       location: form.location.trim(),
       items,
-      total: subtotal
+      total,
+      currency: shop.currency,
+      reference: ref
     });
-
-    window.open(
-      `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`,
-      "_blank",
-      "noopener,noreferrer"
-    );
+    const url = whatsappLink(whatsappNumber, message);
+    if (tab) tab.location.href = url;
+    else window.location.href = url;
+    setReference(ref);
     clear();
     setStatus("sent");
   };
@@ -116,6 +139,12 @@ export default function OrderPage() {
       <div className="space-y-4">
         <h1 className="font-display text-2xl">Order details</h1>
         <form onSubmit={handleSubmit} noValidate className="card space-y-5">
+          {orderError && (
+            <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {orderError}{" "}
+              <Link href="/cart" className="font-medium underline">Review cart</Link>
+            </div>
+          )}
           <div className="space-y-1">
             <label className="label" htmlFor="name">Your name <span className="text-red-500">*</span></label>
             <input
