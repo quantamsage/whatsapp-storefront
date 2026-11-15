@@ -23,7 +23,7 @@ export default function CartPage() {
           </div>
           <div>
             <h1 className="font-display text-2xl">Your cart is empty</h1>
-            <p className="mt-2 text-sm text-slate-500">Browse the shop and add your favorite scents.</p>
+            <p className="mt-2 text-sm text-slate-500">Browse the shop and add something you like.</p>
           </div>
           <Link href="/shop" className="btn-primary inline-flex">Browse shop</Link>
         </div>

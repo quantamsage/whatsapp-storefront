@@ -3,7 +3,6 @@ import "server-only";
 import { cache } from "react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
-  defaultSiteContent,
   normalizeSiteContent,
   SiteContent
 } from "@/lib/siteContentShared";
@@ -11,7 +10,7 @@ import {
 export const getSiteContent = cache(async () => {
   const supabase = await createSupabaseServerClient();
   if (!supabase) {
-    return defaultSiteContent;
+    return normalizeSiteContent(null);
   }
 
   const { data, error } = await supabase
@@ -21,7 +20,7 @@ export const getSiteContent = cache(async () => {
     .maybeSingle();
 
   if (error || !data) {
-    return defaultSiteContent;
+    return normalizeSiteContent(null);
   }
 
   return normalizeSiteContent(data as Partial<SiteContent>);

@@ -3,9 +3,9 @@ import { getSiteContent } from "@/lib/siteContent";
 
 export default async function ContactPage() {
   const site = await getSiteContent();
-  const number = (process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "").replace(/\D/g, "");
+  const number = site.whatsapp_number;
   const url = number
-    ? `https://wa.me/${number}?text=${encodeURIComponent(`Hi ${site.store_name}, I have a question about your scents.`)}`
+    ? `https://wa.me/${number}?text=${encodeURIComponent(`Hi ${site.store_name}, I have a question.`)}`
     : "#";
 
   return (

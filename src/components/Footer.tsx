@@ -2,7 +2,7 @@ import Link from "next/link";
 import { SiteContent } from "@/lib/siteContentShared";
 
 export default function Footer({ site }: { site: SiteContent }) {
-  const waNumber = (process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "").replace(/\D/g, "");
+  const waNumber = site.whatsapp_number;
   const waUrl = waNumber
     ? `https://wa.me/${waNumber}?text=${encodeURIComponent(`Hi ${site.store_name}, I'd like to place an order.`)}`
     : "/contact";
@@ -13,7 +13,7 @@ export default function Footer({ site }: { site: SiteContent }) {
         <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="font-display text-base font-semibold text-slate-900">{site.store_name}</p>
-            <p className="mt-1 text-sm text-slate-500">Authentic scents. Order fast via WhatsApp.</p>
+            <p className="mt-1 text-sm text-slate-500">{site.tagline}</p>
           </div>
           <div className="flex flex-wrap gap-4 text-sm text-slate-500">
             <Link href="/shop" className="hover:text-slate-900 transition">Shop</Link>
