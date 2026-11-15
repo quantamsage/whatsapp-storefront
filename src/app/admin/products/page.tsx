@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { Product, Category } from "@/lib/types";
-import { formatKes } from "@/lib/format";
+import { stockInfo } from "@/lib/stock";
+import { useShop } from "@/components/ShopProvider";
 import AdminProductForm from "@/components/admin/AdminProductForm";
 
 export default function AdminProductsPage() {
@@ -12,6 +13,11 @@ export default function AdminProductsPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const shop = useShop();
+  const needsRestock = products.filter((p) => {
+    const s = stockInfo(p, shop.lowStockThreshold);
+    return !s.available || s.low;
+  });
 
   const loadData = async () => {
     setLoading(true);
@@ -63,7 +69,7 @@ export default function AdminProductsPage() {
       <div>
         <h1 className="font-display text-2xl">Products</h1>
         <p className="text-sm text-slate-600">
-          Add, edit, and manage perfume/decant listings.
+          Add, edit and manage what you sell, including prices, options and stock.
         </p>
       </div>
 
@@ -83,6 +89,12 @@ export default function AdminProductsPage() {
           {loading && <span className="text-xs text-slate-500">Loading...</span>}
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
+        {needsRestock.length > 0 && (
+          <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            {needsRestock.length} product{needsRestock.length !== 1 ? "s" : ""} sold out or running low:{" "}
+            {needsRestock.map((p) => p.name).join(", ")}
+          </p>
+        )}
         {products.length === 0 && !loading && (
           <p className="text-sm text-slate-600">No products yet.</p>
         )}
@@ -92,8 +104,15 @@ export default function AdminProductsPage() {
               <div>
                 <p className="font-medium">{product.name}</p>
                 <p className="text-sm text-slate-600">
-                  {formatKes(product.price)}
-                  {!product.in_stock && " (out of stock)"}
+                  {shop.money(product.price)}
+                  {" · "}
+                  {(() => {
+                    const s = stockInfo(product, shop.lowStockThreshold);
+                    if (!product.in_stock) return <span className="text-red-600">hidden as out of stock</span>;
+                    if (s.left === null) return "stock not tracked";
+                    if (s.left === 0) return <span className="text-red-600">sold out</span>;
+                    return <span className={s.low ? "text-amber-700 font-medium" : ""}>{s.left} in stock</span>;
+                  })()}
                 </p>
               </div>
               <div className="flex gap-2">

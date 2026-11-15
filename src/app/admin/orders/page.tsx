@@ -2,14 +2,24 @@
 
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/client";
-import type { CartItem } from "@/lib/types";
+import { useShop } from "@/components/ShopProvider";
+
+/** Saved line: `size` for orders placed via place_order, `variant` for older orders. */
+type OrderLine = {
+  product_id?: string;
+  name: string;
+  price: number;
+  quantity: number;
+  size?: string | null;
+  variant?: string | null;
+};
 
 type Order = {
   id: string;
   customer_name: string;
   phone: string;
   location: string;
-  cart_items: CartItem[];
+  cart_items: OrderLine[];
   total: number;
   status: string;
   created_at: string;
@@ -26,6 +36,8 @@ export default function AdminOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [updatingOrder, setUpdatingOrder] = useState<string | null>(null);
+  const shop = useShop();
+  const optionText = (item: OrderLine) => item.variant ?? (item.size ? shop.option(item.size) : null);
 
   useEffect(() => {
     fetchOrders();
@@ -56,7 +68,7 @@ export default function AdminOrdersPage() {
 
     for (const order of ordersData) {
       for (const item of order.cart_items) {
-        const key = item.variant ? `${item.name} (${item.variant})` : item.name;
+        const key = item.variant ? `${item.name} (${item.variant})` : item.size ? `${item.name} (${item.size})` : item.name;
         salesMap.set(key, (salesMap.get(key) || 0) + item.quantity);
       }
     }
@@ -241,7 +253,10 @@ export default function AdminOrdersPage() {
 
                   {/* Order Info */}
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{order.customer_name}</p>
+                    <p className="font-medium truncate">
+                      {order.customer_name}{" "}
+                      <span className="font-mono text-xs text-slate-400">#{order.id.slice(0, 8).toUpperCase()}</span>
+                    </p>
                     <p className="text-xs text-slate-500">{order.phone}</p>
                   </div>
 
@@ -256,7 +271,7 @@ export default function AdminOrdersPage() {
 
                   {/* Total */}
                   <span className="font-semibold text-sm">
-                    KES {order.total.toLocaleString()}
+                    {shop.money(Number(order.total))}
                   </span>
 
                   {/* Date */}
@@ -303,10 +318,10 @@ export default function AdminOrdersPage() {
                           >
                             <span>
                               {item.name}
-                              {item.variant && (
+                              {optionText(item) && (
                                 <span className="text-slate-500">
                                   {" "}
-                                  ({item.variant})
+                                  ({optionText(item)})
                                 </span>
                               )}
                               <span className="text-slate-400">
@@ -315,7 +330,7 @@ export default function AdminOrdersPage() {
                               </span>
                             </span>
                             <span className="font-medium">
-                              KES {(item.price * item.quantity).toLocaleString()}
+                              {shop.money(Number(item.price) * item.quantity)}
                             </span>
                           </li>
                         ))}

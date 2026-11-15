@@ -1,26 +1,17 @@
-﻿import "./globals.css";
+import "@fontsource-variable/manrope";
+import "@fontsource-variable/playfair-display";
+import "./globals.css";
 import type { CSSProperties } from "react";
-import { Manrope, Playfair_Display } from "next/font/google";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import SidePanel from "@/components/SidePanel";
+import { ShopProvider } from "@/components/ShopProvider";
 import { getSiteContent } from "@/lib/siteContent";
-
-const manrope = Manrope({
-  subsets: ["latin"],
-  variable: "--font-sans"
-});
-
-const playfair = Playfair_Display({
-  subsets: ["latin"],
-  variable: "--font-display"
-});
 
 export async function generateMetadata() {
   const site = await getSiteContent();
   const title = site.store_name;
-  const description =
-    "Browse perfumes and decants, add to cart, and order via WhatsApp.";
+  const description = site.tagline;
 
   return {
     title,
@@ -47,17 +38,28 @@ export default async function RootLayout({
   } as CSSProperties;
 
   return (
-    <html lang="en" className={`${manrope.variable} ${playfair.variable}`}>
+    <html lang="en">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </head>
       <body className="min-h-screen" style={brandVars}>
-        <SidePanel site={site} />
-        <Header site={site} />
-        <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-          {children}
-        </main>
-        <Footer site={site} />
+        <ShopProvider
+          settings={{
+            storeName: site.store_name,
+            currency: site.currency,
+            whatsappNumber: site.whatsapp_number,
+            optionLabel: site.option_label,
+            optionUnit: site.option_unit,
+            lowStockThreshold: site.low_stock_threshold
+          }}
+        >
+          <SidePanel site={site} />
+          <Header site={site} />
+          <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+            {children}
+          </main>
+          <Footer site={site} />
+        </ShopProvider>
       </body>
     </html>
   );

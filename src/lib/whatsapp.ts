@@ -1,5 +1,5 @@
 import { CartItem } from "@/lib/types";
-import { formatKes } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 
 type MessageInput = {
   name: string;
@@ -7,30 +7,27 @@ type MessageInput = {
   location?: string;
   items: CartItem[];
   total: number;
+  currency: string;
+  /** Short order reference when the order was saved. */
+  reference?: string | null;
 };
 
-export function buildWhatsAppMessage({
-  name,
-  phone,
-  location,
-  items,
-  total
-}: MessageInput) {
-  const locationLine = location?.trim() || "Will share on WhatsApp";
+export function buildWhatsAppMessage({ name, phone, location, items, total, currency, reference }: MessageInput) {
+  const money = (amount: number) => formatMoney(amount, currency);
   const lines = [
-    "New Order:",
+    reference ? `New order #${reference}` : "New order",
     `Name: ${name}`,
     `Phone: ${phone}`,
-    `Location: ${locationLine}`,
+    `Location: ${location?.trim() || "Will share on WhatsApp"}`,
     "Items:",
     ...items.map((item) => {
       const variant = item.variant ? ` (${item.variant})` : "";
-      return `- ${item.name}${variant} x${item.quantity} = ${formatKes(
-        item.price * item.quantity
-      )}`;
+      return `- ${item.name}${variant} x${item.quantity} = ${money(item.price * item.quantity)}`;
     }),
-    `Total: ${formatKes(total)}`
+    `Total: ${money(total)}`
   ];
-
   return lines.join("\n");
 }
+
+export const whatsappLink = (number: string, text: string) =>
+  `https://wa.me/${number}?text=${encodeURIComponent(text)}`;

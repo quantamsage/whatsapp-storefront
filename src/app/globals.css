@@ -1,4 +1,10 @@
-﻿@tailwind base;
+/* Fonts are bundled from npm (@fontsource), so builds work offline. */
+:root {
+  --font-sans: "Manrope Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Playfair Display Variable", Georgia, serif;
+}
+
+@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
@@ -143,6 +149,18 @@ body {
   border-radius: 999px;
   background-color: var(--brand-primary-soft);
   color: var(--brand-primary-strong);
+}
+
+.badge-low {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
 }
 
 /* ── Responsive touch targets (mobile) ── */

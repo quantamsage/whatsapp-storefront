@@ -5,7 +5,7 @@ import { SiteContent } from "@/lib/siteContentShared";
 
 export default function Header({ site }: { site: SiteContent }) {
   const logoUrl = site.logo_url || "/logo.svg";
-  const waNumber = (process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "").replace(/\D/g, "");
+  const waNumber = site.whatsapp_number;
   const waUrl = waNumber
     ? `https://wa.me/${waNumber}?text=${encodeURIComponent(`Hi ${site.store_name}, I'd like to place an order.`)}`
     : "/contact";

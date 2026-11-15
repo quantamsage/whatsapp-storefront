@@ -4,8 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { Category, Product, DecantSize } from "@/lib/types";
-import { decantTemplate } from "@/lib/decantTemplate";
-import CopyButton from "@/components/admin/CopyButton";
+import { useShop } from "@/components/ShopProvider";
 
 const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET || "product-images";
 
@@ -15,10 +14,13 @@ const initialForm = {
   description: "",
   category_id: "",
   in_stock: true,
+  stock_quantity: "",
   is_decant: false,
-  decant_sizes_text: "",
+  options: [] as OptionRow[],
   image_url_input: ""
 };
+
+type OptionRow = { size: string; price: string };
 
 type ImageSlot = {
   src: string;
@@ -26,23 +28,20 @@ type ImageSlot = {
   remote?: string;
 };
 
-const parseDecantSizes = (text: string) => {
-  const trimmed = text.trim();
-  if (!trimmed) return { sizes: null as DecantSize[] | null, error: null as string | null };
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (!Array.isArray(parsed)) return { sizes: null, error: "Decant sizes must be a JSON array." };
-    for (const item of parsed) {
-      if (typeof item !== "object" || item === null) return { sizes: null, error: "Each decant size must be an object." };
-      if (typeof (item as DecantSize).size_ml !== "number" || ((item as DecantSize).size_ml ?? 0) <= 0)
-        return { sizes: null, error: "Each size_ml must be a positive number." };
-      if (typeof (item as DecantSize).price !== "number" || ((item as DecantSize).price ?? 0) <= 0)
-        return { sizes: null, error: "Each price must be a positive number." };
-    }
-    return { sizes: parsed as DecantSize[], error: null };
-  } catch {
-    return { sizes: null, error: "Decant sizes must be valid JSON." };
+/** Turn the option rows into the stored [{size_ml, price}] list, or explain what's wrong. */
+const parseOptions = (rows: OptionRow[]): { sizes: DecantSize[] | null; error: string | null } => {
+  const filled = rows.filter((r) => r.size.trim() || r.price.trim());
+  if (filled.length === 0) return { sizes: null, error: "Add at least one option, or untick \"Has options\"." };
+  const sizes: DecantSize[] = [];
+  for (const r of filled) {
+    const size = Number(r.size);
+    const price = Number(r.price);
+    if (!Number.isFinite(size) || size <= 0) return { sizes: null, error: "Each option needs a size above 0." };
+    if (!Number.isFinite(price) || price <= 0) return { sizes: null, error: "Each option needs a price above 0." };
+    if (sizes.some((s) => s.size_ml === size)) return { sizes: null, error: `The size ${size} is listed twice.` };
+    sizes.push({ size_ml: size, price });
   }
+  return { sizes: sizes.sort((a, b) => a.size_ml - b.size_ml), error: null };
 };
 
 function ImagePreviewCard({ slot, onRemove }: { slot: ImageSlot; onRemove: () => void }) {
@@ -106,7 +105,7 @@ export default function AdminProductForm({
   const [slots, setSlots] = useState<ImageSlot[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [decantError, setDecantError] = useState<string | null>(null);
+  const shop = useShop();
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -120,19 +119,16 @@ export default function AdminProductForm({
         description: editingProduct.description || "",
         category_id: editingProduct.category_id || "",
         in_stock: editingProduct.in_stock,
+        stock_quantity: editingProduct.stock_quantity == null ? "" : String(editingProduct.stock_quantity),
         is_decant: Boolean(editingProduct.is_decant),
-        decant_sizes_text: editingProduct.decant_sizes
-          ? JSON.stringify(editingProduct.decant_sizes, null, 2)
-          : "",
+        options: (editingProduct.decant_sizes ?? []).map((o) => ({ size: String(o.size_ml), price: String(o.price ?? "") })),
         image_url_input: ""
       });
       setSlots((editingProduct.image_urls ?? []).map((url) => ({ src: url, remote: url })));
-      setDecantError(null);
       setError(null);
     } else {
       setForm(initialForm);
       setSlots([]);
-      setDecantError(null);
       setError(null);
     }
   }, [editingProduct]);
@@ -205,20 +201,32 @@ export default function AdminProductForm({
     event.preventDefault();
     setError(null);
 
-    if (!form.name.trim() || !form.price) {
-      setError("Name and price are required.");
+    if (!form.name.trim()) {
+      setError("Product name is required.");
       return;
     }
-    const price = Number(form.price);
-    if (!Number.isFinite(price) || price <= 0) {
-      setError("Price must be a positive number.");
+    let decantSizes: DecantSize[] | null = null;
+    let price = Number(form.price);
+    if (form.is_decant) {
+      const parsed = parseOptions(form.options);
+      if (parsed.error) {
+        setError(parsed.error);
+        return;
+      }
+      decantSizes = parsed.sizes;
+      // The listed price is the cheapest option, shown as "From ..." in the shop.
+      price = Math.min(...decantSizes!.map((o) => o.price ?? Infinity));
+    } else if (!form.price || !Number.isFinite(price) || price <= 0) {
+      setError("Price must be a number above 0.");
       return;
     }
-    const { sizes: decantSizes, error: decantParseError } = parseDecantSizes(form.decant_sizes_text);
-    if (decantParseError) {
-      setError(decantParseError);
-      setDecantError(decantParseError);
-      return;
+    let stockQuantity: number | null = null;
+    if (form.stock_quantity.trim() !== "") {
+      stockQuantity = Number(form.stock_quantity);
+      if (!Number.isInteger(stockQuantity) || stockQuantity < 0) {
+        setError("Stock must be a whole number, 0 or more. Leave it empty if you don't track stock.");
+        return;
+      }
     }
 
     setLoading(true);
@@ -238,6 +246,7 @@ export default function AdminProductForm({
       description: form.description.trim() || null,
       category_id: form.category_id || null,
       in_stock: form.in_stock,
+      stock_quantity: stockQuantity,
       is_decant: form.is_decant,
       decant_sizes: decantSizes,
       image_urls: imageUrls
@@ -295,17 +304,19 @@ export default function AdminProductForm({
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <label className="label">Product name <span className="text-red-500">*</span></label>
-            <input className="input" placeholder="e.g. Sauvage EDP" value={form.name}
+            <input className="input" placeholder="e.g. House Blend" value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })} required />
           </div>
           <div className="space-y-1.5">
-            <label className="label">Price (KES) <span className="text-red-500">*</span></label>
-            <input className="input" type="number" min="0" step="1" placeholder="e.g. 3500"
-              value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required />
+            <label className="label" htmlFor="product-price">Price ({shop.currency}) {!form.is_decant && <span className="text-red-500">*</span>}</label>
+            <input id="product-price" className="input" type="number" min="0" step="0.01" placeholder="e.g. 1500"
+              value={form.is_decant ? "" : form.price} disabled={form.is_decant}
+              onChange={(e) => setForm({ ...form, price: e.target.value })} />
+            {form.is_decant && <p className="text-xs text-slate-500">Set per option below. The shop shows the lowest as &ldquo;From&rdquo;.</p>}
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <label className="label">Description</label>
-            <textarea className="input min-h-[90px]" placeholder="Scent notes, occasion, longevity…"
+            <textarea className="input min-h-[90px]" placeholder="What it is, what it's made of, who it's for…"
               value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </div>
           <div className="space-y-1.5">
@@ -316,45 +327,57 @@ export default function AdminProductForm({
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          <div className="flex flex-wrap items-center gap-5 sm:pt-6">
+          <div className="space-y-1.5">
+            <label className="label" htmlFor="product-stock">Stock <span className="font-normal text-slate-400">(leave empty to not track)</span></label>
+            <input id="product-stock" className="input" type="number" min="0" step="1" placeholder="e.g. 12"
+              value={form.stock_quantity} onChange={(e) => setForm({ ...form, stock_quantity: e.target.value })} />
+            <p className="text-xs text-slate-500">Goes down automatically with each saved order. At 0 it shows as sold out.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-5 sm:col-span-2">
             <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
               <input type="checkbox" className="h-4 w-4 accent-emerald-600"
                 checked={form.in_stock} onChange={(e) => setForm({ ...form, in_stock: e.target.checked })} />
-              In stock
+              Available to order
             </label>
             <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
               <input type="checkbox" className="h-4 w-4 accent-emerald-600"
-                checked={form.is_decant} onChange={(e) => setForm({ ...form, is_decant: e.target.checked })} />
-              Is decant
+                checked={form.is_decant}
+                onChange={(e) => setForm({
+                  ...form,
+                  is_decant: e.target.checked,
+                  options: e.target.checked && form.options.length === 0 ? [{ size: "", price: form.price }] : form.options
+                })} />
+              Has options ({shop.optionLabel.toLowerCase()})
             </label>
           </div>
         </div>
 
-        {/* Decant sizes */}
+        {/* Options, e.g. sizes with their own price */}
         {form.is_decant && (
-          <div className="space-y-2 rounded-xl border border-dashed border-slate-200 p-4">
-            <label className="label">Decant sizes (JSON)</label>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" className="btn-ghost text-xs"
-                onClick={() => setForm({ ...form, decant_sizes_text: decantTemplate })}>
-                Paste template
-              </button>
-              <CopyButton text={decantTemplate} label="Copy template" />
-            </div>
-            <textarea
-              className={`input min-h-[110px] font-mono text-xs ${decantError ? "border-red-400" : ""}`}
-              placeholder='[{"size_ml": 5, "price": 450}, {"size_ml": 10, "price": 900}]'
-              value={form.decant_sizes_text}
-              onChange={(e) => {
-                setForm({ ...form, decant_sizes_text: e.target.value });
-                setDecantError(parseDecantSizes(e.target.value).error);
-              }}
-            />
-            {decantError ? (
-              <p className="text-xs text-red-600">{decantError}</p>
-            ) : form.decant_sizes_text.trim() ? (
-              <p className="text-xs font-medium text-emerald-600">✓ Valid JSON</p>
-            ) : null}
+          <div className="space-y-3 rounded-xl border border-dashed border-slate-200 p-4">
+            <p className="label">{shop.optionLabel} options</p>
+            {form.options.map((row, i) => (
+              <div key={i} className="flex flex-wrap items-center gap-2">
+                <input className="input w-32" type="number" min="0" step="any" aria-label={`Option ${i + 1} size`}
+                  placeholder={`Size${shop.optionUnit ? ` (${shop.optionUnit})` : ""}`} value={row.size}
+                  onChange={(e) => setForm({ ...form, options: form.options.map((r, j) => j === i ? { ...r, size: e.target.value } : r) })} />
+                <input className="input w-36" type="number" min="0" step="0.01" aria-label={`Option ${i + 1} price`}
+                  placeholder={`Price (${shop.currency})`} value={row.price}
+                  onChange={(e) => setForm({ ...form, options: form.options.map((r, j) => j === i ? { ...r, price: e.target.value } : r) })} />
+                <button type="button" className="btn-ghost text-xs"
+                  onClick={() => setForm({ ...form, options: form.options.filter((_, j) => j !== i) })}>
+                  Remove
+                </button>
+              </div>
+            ))}
+            <button type="button" className="btn-outline text-sm"
+              onClick={() => setForm({ ...form, options: [...form.options, { size: "", price: "" }] })}>
+              + Add option
+            </button>
+            <p className="text-xs text-slate-500">
+              Shown to shoppers as {shop.option(250)}, {shop.option(500)}… Stock (above) is shared by all options.
+              Change the wording under Content → Shop settings.
+            </p>
           </div>
         )}
 

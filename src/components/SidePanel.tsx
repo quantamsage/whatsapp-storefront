@@ -6,40 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SiteContent } from "@/lib/siteContentShared";
 
-const STORAGE_KEY = "sfc-panel-dismissed";
-
-const FEATURED_PRODUCTS = [
-  {
-    name: "Sauvage EDP",
-    note: "Fresh & Spicy",
-    img: "https://www.dior.com/dw/image/v2/BGXS_PRD/on/demandware.static/-/Sites-master_dior/default/dw24a244fd/Y0785220/Y0785220_F078524009_E01_RHC.jpg?sw=800"
-  },
-  {
-    name: "Acqua Di Gio",
-    note: "Aquatic & Citrus",
-    img: "https://www.giorgioarmanibeauty-usa.com/dw/image/v2/AANG_PRD/on/demandware.static/-/Sites-gab-master-catalog/default/dw04d58b00/products/2025/A005%20RESTAGE/3614273955546_01.jpg?q=85&sfrm=jpg&sh=430&sm=cut&sw=430"
-  },
-  {
-    name: "Libre EDP",
-    note: "Bold Floral",
-    img: "https://www.yslbeautyus.com/dw/image/v2/AANG_PRD/on/demandware.static/-/Sites-ysl-master-catalog/default/dw3cedbd53/Images2019/Libre%20Eau%20De%20Parfum/90mL/3614272648425.jpg?q=85&sfrm=jpg&sh=320&sm=cut&sw=320"
-  },
-  {
-    name: "Daisy EDT",
-    note: "Soft & Sweet",
-    img: "https://cdn.media.amplience.net/i/Marc_Jacobs/MJI_31655513034_000_F8F8F8_4-5_MAIN"
-  },
-  {
-    name: "Miss Dior EDP",
-    note: "Velvety Rose",
-    img: "https://www.dior.com/dw/image/v2/BGXS_PRD/on/demandware.static/-/Sites-master_dior/default/dw8822db34/Y0996347/Y0996347_C099600764_E01_RHC.jpg?sw=800"
-  },
-  {
-    name: "Oud Wood",
-    note: "Rich & Smoky",
-    img: "https://sdcdn.io/tf/tf_sku_TAJK01_2000x2000_0.png?height=700px&width=700px"
-  }
-];
+const STORAGE_KEY = "storefront-panel-dismissed";
 
 export default function SidePanel({ site }: { site: SiteContent }) {
   const pathname = usePathname();
@@ -51,14 +18,11 @@ export default function SidePanel({ site }: { site: SiteContent }) {
     [site.panel_images]
   );
 
-  // Use admin panel_images if set, otherwise fall back to featured products
-  const featuredItems = useMemo(() => {
-    return FEATURED_PRODUCTS.map((fp, i) => ({
-      name: fp.name,
-      note: fp.note,
-      img: panelImages[i] || fp.img
-    }));
-  }, [panelImages]);
+  // Images chosen in the admin (Content → Side panel images). No images, no grid.
+  const featuredItems = useMemo(
+    () => panelImages.map((img, i) => ({ img, name: `${site.store_name} featured ${i + 1}` })),
+    [panelImages, site.store_name]
+  );
 
   useEffect(() => {
     setHasMounted(true);
@@ -135,16 +99,17 @@ export default function SidePanel({ site }: { site: SiteContent }) {
         {/* Tagline */}
         <div className="border-b border-slate-100 px-5 py-4">
           <p className="text-sm leading-relaxed text-slate-600">
-            ✨ Fresh arrivals, authentic decants &amp; everyday favorites.
+            {site.tagline}
             <br />
             <span className="font-medium text-slate-800">Order instantly via WhatsApp.</span>
           </p>
         </div>
 
-        {/* Featured scents grid */}
+        {/* Featured images grid */}
+        {featuredItems.length > 0 && (
         <div className="flex-1 px-5 py-4">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
-            Featured Scents
+            Featured
           </p>
           <div className="grid grid-cols-2 gap-3">
             {featuredItems.map((item, index) => (
@@ -162,20 +127,12 @@ export default function SidePanel({ site }: { site: SiteContent }) {
                     sizes="(max-width: 400px) 44vw, 176px"
                     className="object-cover transition duration-300 group-hover:scale-105"
                   />
-                  {/* Gradient overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                  {/* Text on image */}
-                  <div className="absolute bottom-0 left-0 right-0 p-2">
-                    <p className="text-xs font-semibold leading-tight text-white">
-                      {item.name}
-                    </p>
-                    <p className="text-[10px] text-white/75">{item.note}</p>
-                  </div>
                 </div>
               </Link>
             ))}
           </div>
         </div>
+        )}
 
         {/* CTA buttons */}
         <div className="border-t border-slate-100 px-5 pb-6 pt-4 space-y-2">
@@ -187,7 +144,7 @@ export default function SidePanel({ site }: { site: SiteContent }) {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/>
             </svg>
-            Browse All Scents
+            Browse all products
           </Link>
           <Link
             href="/contact"

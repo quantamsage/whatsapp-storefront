@@ -14,38 +14,50 @@ export type SiteContent = {
   brand_primary_soft: string;
   brand_accent: string;
   brand_accent_soft: string;
+  /** ISO 4217 code, e.g. KES, USD, UGX. Used for every price in the shop. */
+  currency: string;
+  /** Digits only, with country code, e.g. 254712345678. Orders are sent here. */
+  whatsapp_number: string;
+  /** One line shown in the footer and in link previews. */
+  tagline: string;
+  /** What product options are called ("Size", "Bag size", "Decant") and their unit ("ml", "g", or nothing). */
+  option_label: string;
+  option_unit: string;
+  /** Show "Only N left" when a tracked stock count is at or below this. */
+  low_stock_threshold: number;
 };
 
-const DEFAULT_PANEL_IMAGES = [
-  "https://www.dior.com/dw/image/v2/BGXS_PRD/on/demandware.static/-/Sites-master_dior/default/dw24a244fd/Y0785220/Y0785220_F078524009_E01_RHC.jpg?sw=800",
-  "https://www.giorgioarmanibeauty-usa.com/dw/image/v2/AANG_PRD/on/demandware.static/-/Sites-gab-master-catalog/default/dw04d58b00/products/2025/A005%20RESTAGE/3614273955546_01.jpg?q=85&sfrm=jpg&sh=430&sm=cut&sw=430",
-  "https://www.yslbeautyus.com/dw/image/v2/AANG_PRD/on/demandware.static/-/Sites-ysl-master-catalog/default/dw3cedbd53/Images2019/Libre%20Eau%20De%20Parfum/90mL/3614272648425.jpg?q=85&sfrm=jpg&sh=320&sm=cut&sw=320",
-  "https://cdn.media.amplience.net/i/Marc_Jacobs/MJI_31655513034_000_F8F8F8_4-5_MAIN",
-  "https://www.dior.com/dw/image/v2/BGXS_PRD/on/demandware.static/-/Sites-master_dior/default/dw8822db34/Y0996347/Y0996347_C099600764_E01_RHC.jpg?sw=800",
-  "https://sdcdn.io/tf/tf_sku_TAJK01_2000x2000_0.png?height=700px&width=700px"
-];
+export const CURRENCIES = ["KES", "UGX", "TZS", "RWF", "NGN", "GHS", "ZAR", "USD", "EUR", "GBP"] as const;
+
+const DEFAULT_PANEL_IMAGES: string[] = [];
 
 export const defaultSiteContent: SiteContent = {
-  store_name: "SCENTS FOR CENTS",
+  store_name: "My Shop",
   logo_url: "/logo.svg",
-  hero_badge: "Nairobi delivery friendly",
-  hero_title: "SCENTS FOR CENTS",
+  hero_badge: "Order on WhatsApp",
+  hero_title: "Welcome to the shop",
   hero_subtitle:
-    "Discover fresh arrivals, decants, and everyday favorites. Shop fast, add to cart, and place orders instantly via WhatsApp.",
+    "Browse the catalogue, add what you like to your cart, and send the order to us on WhatsApp in one tap.",
   cta_primary: "Shop now",
   cta_secondary: "Contact us",
   why_title: "Why shop here?",
   why_bullets: [
-    "Authentic scents curated for everyday wear.",
-    "Decants available for budget-friendly trials.",
-    "Fast WhatsApp ordering and clear summaries."
+    "Clear prices and up-to-date stock.",
+    "Order in seconds over WhatsApp.",
+    "Friendly, quick replies."
   ],
   panel_images: DEFAULT_PANEL_IMAGES,
   brand_primary: "#1f6b4f",
   brand_primary_strong: "#16503b",
   brand_primary_soft: "#dcefe6",
   brand_accent: "#c7a14a",
-  brand_accent_soft: "#f4ead2"
+  brand_accent_soft: "#f4ead2",
+  currency: "KES",
+  whatsapp_number: "",
+  tagline: "Order fast via WhatsApp.",
+  option_label: "Size",
+  option_unit: "",
+  low_stock_threshold: 3
 };
 
 const cleanString = (value: unknown, fallback: string) => {
@@ -84,6 +96,26 @@ const cleanStringArray = (
     return merged.slice(0, minItems);
   }
   return cleaned;
+};
+
+const cleanCurrency = (value: unknown, fallback: string) => {
+  if (typeof value !== "string") return fallback;
+  const code = value.trim().toUpperCase();
+  try {
+    new Intl.NumberFormat("en", { style: "currency", currency: code });
+    return /^[A-Z]{3}$/.test(code) ? code : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+/** Keep digits only; wa.me links need the full international number without "+". */
+export const cleanPhoneDigits = (value: unknown) =>
+  typeof value === "string" ? value.replace(/\D/g, "").slice(0, 15) : "";
+
+const cleanInt = (value: unknown, fallback: number, min: number, max: number) => {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(n) && n >= min && n <= max ? n : fallback;
 };
 
 const isHexColor = (value: string) => /^#[0-9A-Fa-f]{6}$/.test(value);
@@ -143,6 +175,15 @@ export const normalizeSiteContent = (
     brand_accent_soft: cleanColor(
       value?.brand_accent_soft,
       defaultSiteContent.brand_accent_soft
-    )
+    ),
+    currency: cleanCurrency(value?.currency, defaultSiteContent.currency),
+    // Saved in the admin; the env var is a fallback for setups from before this setting existed.
+    whatsapp_number:
+      cleanPhoneDigits(value?.whatsapp_number) ||
+      cleanPhoneDigits(process.env.NEXT_PUBLIC_WHATSAPP_NUMBER),
+    tagline: cleanString(value?.tagline, defaultSiteContent.tagline),
+    option_label: cleanString(value?.option_label, defaultSiteContent.option_label).slice(0, 30),
+    option_unit: typeof value?.option_unit === "string" ? value.option_unit.trim().slice(0, 10) : "",
+    low_stock_threshold: cleanInt(value?.low_stock_threshold, defaultSiteContent.low_stock_threshold, 0, 1000)
   };
 };

@@ -48,17 +48,16 @@ const handleSubmit = async (event: React.FormEvent) => {
     return;
   }
 
-  // 🔒 ADMIN CHECK (THIS IS WHAT YOU WERE MISSING)
-  const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
-
-  if (data.user?.email !== ADMIN_EMAIL) {
-    await supabase.auth.signOut(); // kick them out
-    setError("Not authorized");
+  // The database decides who is an admin (public.shop_admins), so this check
+  // can't be bypassed by calling the API directly. Here we just give a clear message.
+  const { data: isAdmin } = await supabase.rpc("is_shop_admin");
+  if (!isAdmin) {
+    await supabase.auth.signOut();
+    setError(`${data.user?.email ?? "This account"} isn't an admin for this shop. Add it to the shop_admins table (see the README).`);
     setLoading(false);
     return;
   }
 
-  // ✅ success
   router.replace(redirectedFrom);
 };
 
@@ -71,26 +70,30 @@ const handleSubmit = async (event: React.FormEvent) => {
         </p>
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <div className="space-y-2">
-            <label className="label">Email</label>
+            <label className="label" htmlFor="admin-email">Email</label>
             <input
+              id="admin-email"
               className="input"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
             />
           </div>
           <div className="space-y-2">
-            <label className="label">Password</label>
+            <label className="label" htmlFor="admin-password">Password</label>
             <input
+              id="admin-password"
               className="input"
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
             />
           </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
           <button type="submit" className="btn-primary w-full" disabled={loading}>
             {loading ? "Signing in..." : "Sign in"}
           </button>

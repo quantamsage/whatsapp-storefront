@@ -2,6 +2,10 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { CartItem } from "@/lib/types";
 
+/** Never more than the stock seen when the item was added (the server checks again at checkout). */
+const capped = (quantity: number, max?: number | null) =>
+  Math.max(1, Math.min(quantity, max ?? 100, 100));
+
 const makeKey = (productId: string, variant?: string | null) =>
   variant ? `${productId}::${variant}` : productId;
 
@@ -30,7 +34,8 @@ export const useCartStore = create<CartState>()(
                 cartItem.key === key
                   ? {
                       ...cartItem,
-                      quantity: cartItem.quantity + (item.quantity ?? 1)
+                      max_quantity: item.max_quantity ?? cartItem.max_quantity,
+                      quantity: capped(cartItem.quantity + (item.quantity ?? 1), item.max_quantity ?? cartItem.max_quantity)
                     }
                   : cartItem
               )
@@ -54,7 +59,7 @@ export const useCartStore = create<CartState>()(
       increment: (key) =>
         set((state) => ({
           items: state.items.map((item) =>
-            item.key === key ? { ...item, quantity: item.quantity + 1 } : item
+            item.key === key ? { ...item, quantity: capped(item.quantity + 1, item.max_quantity) } : item
           )
         })),
       decrement: (key) =>
@@ -76,7 +81,7 @@ export const useCartStore = create<CartState>()(
         get().items.reduce((sum, item) => sum + item.quantity, 0)
     }),
     {
-      name: "sams-perfume-cart",
+      name: "storefront-cart",
       storage: createJSONStorage(() => localStorage)
     }
   )

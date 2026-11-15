@@ -89,7 +89,7 @@ export default async function HomePage() {
         )}
         <div className="flex justify-center pt-2">
           <Link href="/shop" className="btn-outline px-8 py-2.5">
-            See all scents
+            See all products
           </Link>
         </div>
       </section>

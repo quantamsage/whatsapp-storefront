@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import {
+  CURRENCIES,
+  cleanPhoneDigits,
   defaultSiteContent,
   normalizeSiteContent,
   SiteContent
@@ -28,6 +30,12 @@ type FormState = {
   brand_primary_soft: string;
   brand_accent: string;
   brand_accent_soft: string;
+  currency: string;
+  whatsapp_number: string;
+  tagline: string;
+  option_label: string;
+  option_unit: string;
+  low_stock_threshold: string;
 };
 
 // Panel slot: either a committed URL or a pending File to upload
@@ -47,7 +55,13 @@ const toFormState = (content: SiteContent): FormState => ({
   brand_primary_strong: content.brand_primary_strong,
   brand_primary_soft: content.brand_primary_soft,
   brand_accent: content.brand_accent,
-  brand_accent_soft: content.brand_accent_soft
+  brand_accent_soft: content.brand_accent_soft,
+  currency: content.currency,
+  whatsapp_number: content.whatsapp_number,
+  tagline: content.tagline,
+  option_label: content.option_label,
+  option_unit: content.option_unit,
+  low_stock_threshold: String(content.low_stock_threshold)
 });
 
 const parseLines = (text: string) =>
@@ -295,6 +309,17 @@ export default function AdminContentForm() {
       return;
     }
 
+    const whatsapp = cleanPhoneDigits(form.whatsapp_number);
+    if (whatsapp && (whatsapp.length < 8 || whatsapp.startsWith("0"))) {
+      setError("Enter the WhatsApp number with its country code and no leading 0, e.g. 254712345678.");
+      return;
+    }
+    const lowStock = Number(form.low_stock_threshold);
+    if (!Number.isInteger(lowStock) || lowStock < 0 || lowStock > 1000) {
+      setError("\"Low stock at\" must be a whole number between 0 and 1000.");
+      return;
+    }
+
     setSaving(true);
     const supabase = supabaseBrowser();
     if (!supabase) {
@@ -343,6 +368,12 @@ export default function AdminContentForm() {
       brand_primary_soft: form.brand_primary_soft.trim() || null,
       brand_accent: form.brand_accent.trim() || null,
       brand_accent_soft: form.brand_accent_soft.trim() || null,
+      currency: form.currency,
+      whatsapp_number: whatsapp || null,
+      tagline: form.tagline.trim() || null,
+      option_label: form.option_label.trim() || "Size",
+      option_unit: form.option_unit.trim(),
+      low_stock_threshold: lowStock,
       updated_at: new Date().toISOString()
     };
 
@@ -369,6 +400,55 @@ export default function AdminContentForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+
+      {/* ── Shop settings ── */}
+      <div className="card space-y-5">
+        <div>
+          <h2 className="font-medium">Shop settings</h2>
+          <p className="text-sm text-slate-500">How your shop sells: currency, where orders go, and how products are described.</p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <label className="label" htmlFor="currency">Currency</label>
+            <select id="currency" className="input" value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })}>
+              {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="label" htmlFor="whatsapp">WhatsApp number for orders</label>
+            <input id="whatsapp" className="input" inputMode="tel" placeholder="254712345678"
+              value={form.whatsapp_number} onChange={(e) => setForm({ ...form, whatsapp_number: e.target.value })} />
+            <p className="text-xs text-slate-500">Country code first, no + and no leading 0.</p>
+          </div>
+          <div className="space-y-1.5 md:col-span-2">
+            <label className="label" htmlFor="tagline">Tagline</label>
+            <input id="tagline" className="input" maxLength={120} placeholder="Fresh coffee and tea, ordered over WhatsApp."
+              value={form.tagline} onChange={(e) => setForm({ ...form, tagline: e.target.value })} />
+            <p className="text-xs text-slate-500">Shown in the footer and in link previews.</p>
+          </div>
+          <div className="space-y-1.5">
+            <label className="label" htmlFor="option-label">Product options are called</label>
+            <input id="option-label" className="input" maxLength={30} placeholder="Size"
+              value={form.option_label} onChange={(e) => setForm({ ...form, option_label: e.target.value })} />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="label" htmlFor="option-unit">Option unit</label>
+              <input id="option-unit" className="input" maxLength={10} placeholder="ml, g, or empty"
+                value={form.option_unit} onChange={(e) => setForm({ ...form, option_unit: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="label" htmlFor="low-stock">Low stock at</label>
+              <input id="low-stock" className="input" type="number" min={0} max={1000}
+                value={form.low_stock_threshold} onChange={(e) => setForm({ ...form, low_stock_threshold: e.target.value })} />
+            </div>
+          </div>
+        </div>
+        <p className="text-xs text-slate-500">
+          Preview: a product with options shows &ldquo;{form.option_label || "Size"}: 250{form.option_unit}, 500{form.option_unit}&rdquo;,
+          and &ldquo;Only {form.low_stock_threshold || 0} left&rdquo; once stock is that low.
+        </p>
+      </div>
 
       {/* ── Storefront text ── */}
       <div className="card space-y-5">
@@ -450,7 +530,7 @@ export default function AdminContentForm() {
         <div>
           <h2 className="font-medium">Side panel images</h2>
           <p className="text-sm text-slate-500">
-            These are the 6 featured scent images shown in the welcome panel when visitors open the site.
+            These are the 6 featured images shown in the welcome panel when visitors open the site. Leave empty to show your latest products.
             Click a slot to upload from your device, or drag and drop. Hover an image to replace, remove, or reorder it.
           </p>
         </div>
